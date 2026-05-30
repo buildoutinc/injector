@@ -1,0 +1,48 @@
+
+# Injector Project Constitution
+
+You are an AI coding assistant acting as a core maintainer for **Injector**. Use these principles, constraints, and guidelines as your absolute source of truth for all architectural decisions, code generation, and test writing.
+
+## 1. Core Purpose & Vision
+- **Goal:** Injector is a CLI tool to securely and easily manage secrets and application configurations for 12-factor apps.
+- **Target Environments:** Must seamlessly handle secrets on local development machines (Linux, macOS), in Docker containers, CI/CD pipelines (starting with GitHub Actions), and deployed cloud providers (AWS ECS, EC2).
+- **Philosophy:** Prefer convention over configuration. Keep the tool self-discoverable, flexible, and heavily documented via CLI help.
+
+## 2. Architecture & Design Principles
+- **Pluggable Backend:** The backend layer MUST be pluggable. Backends are exclusively responsible for encryption, storage, and access control.
+- **First Backend Implementation:** AWS SSM Parameter Store.
+- **Environments:** A project may have any number of environments. The default environments are: development, staging, production. Users may remove an environment or add additional ones.
+- **Schema:** A schema MUST define the structure and validation rules for secrets and variables. Schemas are applied at the service level and apply to all service environments. Schemas validate the type and presence (required/optional) of secrets and variables on update, can be used to validate an environment, and may be used to cast the value to a specific type when loading.
+- **Inheritance:** Support inheritance hierarchies. Environments must be able to inherit from the Project level, and the Project from the top-level Organization. Individual secrets/variables may be overridden at lower levels. The initial hierarchy is Organization -> Project -> Service -> Environment (e.g., Development, Staging, Production). All projects inherit from the Organization, and all environments inherit from the Project, which in turn inherits from the Organization.
+- **Multi-App Support:** The tool must naturally support managing multiple applications that belong to the same organization.
+- **Multi-Service Support:** The tool must optionally support managing multiple services for the same application.
+- **Git-centric Persistence:** Project data and configuration must be persisted to plain text files. The format must be optimized for Git workflows, diffing, and code reviews by human software teams.
+- **Quickstart:** The tool must minimize the setup required to get started and provide a simple, one-line init command to scaffold out a new project and provision any required infrastructure (AWS SSM Parameter Store, Roles, Policies).
+- **Least-Privilege:** The tool must adhere to the principle of least privilege, ensuring that only the necessary permissions are granted to the user.
+- **Security:** The tool must encourage security best practices by making it easy to do the right thing. It must provide an opinionated, simple, and obvious way to manage application secrets in development, CI/CD pipelines, and deployed environments (AWS ECS, EC2, EKS, K8s, etc.).
+
+## 3. Technology Stack
+- **Language:** Go (Golang). Write idiomatic, clean, and robust Go code.
+- **Testing:** Go unit and integration level testing, as well as end-to-end (e2e) testing against an AWS environment.
+- **Data Formats:** Use YAML for bulk data representation, configuration schemas, and editor integrations.
+
+## 4. Developer Experience (DevEx) & CLI Design
+- **Git-like Structure:** The CLI must have a git-like subcommand structure (e.g., intuitive, hierarchical commands).
+- **Rich Terminal UI:** Provide a rich Text User Interface (TUI) with colored, well-formatted output on modern terminals.
+- **$EDITOR Integration:** Lean heavily on the user's `$EDITOR` environment variable for complex or bulk edits, presenting them with clean YAML blobs to modify and save.
+- **Flexibility:** Ensure easy workflows for importing existing `.env` files.
+- **Self-Documenting:** All commands must have excellent, built-in CLI help text making the tool self-discoverable.
+
+## 5. Data Integrity & Validation
+- **Schemas:** Provide a strict schema definition and verification system for environment secrets and variables.
+- **Easy Updates:** Updating individual values from the CLI must be frictionless and validated against the schema.
+
+## 6. Testing & Quality Constraints
+- **Local Isolation:** The test suite MUST be capable of running entirely locally. **Absolutely no external network calls** are permitted during automated testing.
+- **Stubbing/Mocking:** Use LocalStack (prefer a free / open-source alternative) to mock AWS services like SSM Parameter Store for integration testing.
+
+## 7. Personas
+- **Team Engineer:** Creates a new project and scaffolds out the required project files and infrastructure.
+- **Engineer:** Developers working on an application/service who need to CRUD secrets and variables for application environments, as well as mutate the schema. They review an intern's changes to the schema and notice a failing check indicating a required variable added in the PR is not present in the staging or production environments. They use the CLI to add the missing variables and secrets, which results in the check passing. Sets up deployment of a service to AWS ECS and a 12-factor app running on EC2.
+- **Platform Engineer:** Responsible for managing the organization and its applications/services. Ensures deploys are successful with all required secrets and variables configured for each environment. They do this by running a GitHub Actions check as part of CI/CD and the PR process to block deployments until all required secrets and variables are correctly set in each environment.
+- **Engineer Intern:** Views the application schema while working on a project and manages their local development environment by pulling the shared base for the development environment. Cannot view secret values or alter variables and secrets in any environment other than development. Modifies the schema to add a new secret when working on a project. The schema is a YAML file checked into git, versioned, and reviewed as part of the PR process, requiring approval from an engineer to change. A GitHub check runs to ensure all environments validate against the schema before merging.
