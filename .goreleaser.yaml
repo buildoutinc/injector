@@ -1,0 +1,42 @@
+version: 2
+
+project_name: inject
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: inject
+    main: ./cmd/inject
+    binary: inject
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE*
+      - README*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+release:
+  github:
+    owner: buildoutinc
+    name: injector
+  draft: false
+  prerelease: auto
