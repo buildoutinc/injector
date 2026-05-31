@@ -8,11 +8,47 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
+
+	"github.com/buildoutinc/injector/internal/updatecheck"
+	"github.com/buildoutinc/injector/internal/updater"
 )
 
-// Execute parses args and runs the matched subcommand.
-// Returns a POSIX-style exit code (0 success, 130 SIGINT, 1 other error).
+// Options lets tests substitute the Updater and Checker. nil fields are
+// filled in with production defaults (real GitHub Updater and a
+// BackgroundChecker rooted at the user cache dir).
+type Options struct {
+	Updater updater.Updater
+	Checker updatecheck.Checker
+}
+
+// Execute parses args and runs the matched subcommand with production
+// defaults. Returns a POSIX-style exit code.
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer, version string) int {
+	return ExecuteWith(ctx, args, stdout, stderr, version, Options{})
+}
+
+// ExecuteWith is Execute plus the ability to inject Updater/Checker.
+func ExecuteWith(ctx context.Context, args []string, stdout, stderr io.Writer, version string, opts Options) int {
+	resetNoticeOnce()
+	u := opts.Updater
+	if u == nil {
+		u = updater.NewGithub("buildoutinc/injector", Version())
+	}
+	ck := opts.Checker
+	if ck == nil {
+		dir, err := updatecheck.DefaultCacheDir()
+		if err != nil {
+			ck = updatecheck.Disabled{}
+		} else {
+			ck = &updatecheck.BackgroundChecker{
+				Updater:       u,
+				CacheDir:      dir,
+				BinaryVersion: Version(),
+			}
+		}
+	}
+	ck.Start(ctx)
+
 	var helpRequested bool
 	var root RootCmd
 	parser, err := kong.New(&root,
@@ -24,29 +60,30 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer, versi
 		kong.Exit(func(int) { helpRequested = true }),
 		kong.BindTo(ctx, (*context.Context)(nil)),
 		kong.BindTo(stdout, (*io.Writer)(nil)),
+		kong.Bind(Stderr{stderr}),
+		kong.BindTo(u, (*updater.Updater)(nil)),
+		kong.BindTo(ck, (*updatecheck.Checker)(nil)),
 	)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 
-	// No args → print help to stdout and exit 0 (FR-002).
 	if len(args) == 0 {
 		args = []string{"--help"}
 	}
 
 	kctx, err := parser.Parse(args)
 	if helpRequested {
+		RenderNotice(stdout, ck.Notice(), isTTY(stdout))
 		return 0
 	}
 	if err != nil {
-		// A command group invoked without a subcommand should render
-		// its help screen and exit 0 (FR-007). Detect kong's
-		// "expected one of …" error and retry with --help.
 		var pe *kong.ParseError
 		if errors.As(err, &pe) && strings.HasPrefix(err.Error(), "expected ") {
 			_, _ = parser.Parse(append(args, "--help"))
 			if helpRequested {
+				RenderNotice(stdout, ck.Notice(), isTTY(stdout))
 				return 0
 			}
 		}
@@ -56,6 +93,7 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer, versi
 	}
 
 	if helpRequested {
+		RenderNotice(stdout, ck.Notice(), isTTY(stdout))
 		return 0
 	}
 
@@ -63,7 +101,9 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer, versi
 		if errors.Is(err, context.Canceled) {
 			return 130
 		}
-		_, _ = fmt.Fprintln(stderr, err)
+		if err.Error() != "" {
+			_, _ = fmt.Fprintln(stderr, err)
+		}
 		return 1
 	}
 	return 0
