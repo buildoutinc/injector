@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -53,6 +54,20 @@ func TestBinarySmoke_HelpAndInit(t *testing.T) {
 			t.Errorf("stderr should be empty, got %q", se.String())
 		}
 	})
+
+	t.Run("version subcommand exits 0 and prints inject", func(t *testing.T) {
+		var so, se bytes.Buffer
+		cmd := exec.Command(bin, "version")
+		cmd.Env = append(os.Environ(), "INJECT_NO_UPDATE_CHECK=1")
+		cmd.Stdout, cmd.Stderr = &so, &se
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("exit=%v stderr=%q", err, se.String())
+		}
+		if !strings.HasPrefix(so.String(), "inject ") {
+			t.Errorf("stdout = %q; want prefix 'inject '", so.String())
+		}
+	})
+
 
 	t.Run("unknown command exits non-zero with stderr", func(t *testing.T) {
 		var so, se bytes.Buffer
