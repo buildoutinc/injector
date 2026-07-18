@@ -3,7 +3,7 @@ module github.com/buildoutinc/injector
 go 1.26.3
 
 require (
-	github.com/alecthomas/kong v1.15.0
+	github.com/alecthomas/kong v1.16.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/carapace-sh/carapace v1.11.6
 	github.com/charmbracelet/bubbletea v1.3.10
